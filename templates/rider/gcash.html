@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "auth/_field.html" import field %}
+{% from "_ui.html" import icon %}
+{% block title %}My GCash QR{% endblock %}
+{% block content %}
+<section class="page-narrow">
+  <a class="back-link" href="{{ url_for('main.rider_dashboard') }}">{{ icon('arrow-left', 15) }} Dashboard</a>
+  <div class="page-head"><div><h1>My GCash QR</h1></div></div>
+
+  <div class="note">{{ icon('info', 16) }}<span>Customers who choose GCash will see this QR on their request and pay you directly. PaUtos never handles the money. Use your own GCash "Receive Money" QR, and don't upload anything that shows your balance or an ID.</span></div>
+
+  <div class="card">
+    {% if rider.gcash_qr_file %}
+      <img class="qr-preview" src="{{ url_for('rider.gcash_qr_image') }}" alt="Your GCash QR code">
+    {% else %}
+      <p class="muted" style="margin-bottom:14px">You haven't added a QR yet, so customers can only pay you in cash.</p>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" novalidate data-once>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        {{ form.qr_image.label }}
+        {{ form.qr_image(accept="image/png,image/jpeg,image/webp") }}
+        {% for err in form.qr_image.errors %}<small class="error-text">{{ err }}</small>{% endfor %}
+      </div>
+      {{ field(form.gcash_name) }}
+      <button class="btn btn-primary btn-block" type="submit">Save</button>
+    </form>
+
+    {% if rider.gcash_qr_file %}
+    <form method="post" action="{{ url_for('rider.gcash_remove') }}" onsubmit="return confirm('Remove your GCash QR?');" style="margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-danger btn-block" type="submit">Remove QR</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
