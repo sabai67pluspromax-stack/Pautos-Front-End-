@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, status_badge, route %}
+{% block title %}Request #{{ req.id }}{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url_for('customer.request_list') }}">{{ icon('arrow-left', 15) }} My requests</a>
+<div class="page-head">
+  <div>
+    <h1>Request #{{ req.id }} {{ status_badge(req.status, req.status|status_label) }}</h1>
+    <p class="muted">{{ req.category.name }}</p>
+  </div>
+</div>
+
+<div class="stack">
+  <section class="card">
+    <p class="card-section-title">{{ icon('navigation', 14) }} Route</p>
+    {{ route(req.pickup_address, req.dropoff_address) }}
+    <dl class="details">
+      <dt>Service</dt><dd>{{ req.category.name }}</dd>
+      <dt>Instructions</dt><dd>{{ req.instructions }}</dd>
+      {% if req.item_budget is not none %}<dt>Item budget</dt><dd><span class="money">{{ "%.2f"|format(req.item_budget) }} PHP</span></dd>{% endif %}
+      <dt>Service fee</dt><dd><span class="money">{{ "%.2f"|format(req.service_fee) }} PHP</span></dd>
+      <dt>Rider</dt><dd>{{ req.rider.full_name if req.rider else "Waiting for a rider" }}</dd>
+    </dl>
+  </section>
+
+  {% if show_map %}
+  <section class="card">
+    <p class="card-section-title">{{ icon('map-pin', 14) }} Live tracking</p>
+    <p id="track-text" class="live-text">Waiting for the rider's location...</p>
+    <div id="map" class="map"></div>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <p class="card-section-title">{{ icon('clock', 14) }} Status history</p>
+    <ul class="timeline">
+      {% for h in req.history %}
+        <li><strong>{{ h.status|status_label }}</strong><span class="when">{{ h.created_at|ph_time }}{% if h.note %} · {{ h.note }}{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if req.status == 'pending' %}
+  <form method="post" action="{{ url_for('customer.cancel_request', request_id=req.id) }}"
+        onsubmit="return confirm('Cancel this request?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-danger btn-block" type="submit">Cancel request</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if watch %}
+{% if show_map %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endif %}
+<script>
+  const trackUrl = "{{ url_for('customer.track_request', request_id=req.id) }}";
+  const initialStatus = "{{ req.status }}";
+  const hasMap = "{{ 'yes' if show_map else 'no' }}" === "yes";
+
+  let map = null, marker = null, centered = false;
+  if (hasMap && window.L) {
+    map = L.map("map").setView([12.8797, 121.774], 5);  // Philippines until we get a position
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+  }
+
+  function describe(rider) {
+    if (rider.lat === null) return rider.name + " hasn't shared a location yet.";
+    const s = rider.seconds_ago;
+    const when = s < 15 ? "just now" : s < 90 ? s + " seconds ago" : Math.round(s / 60) + " minutes ago";
+    return rider.name + " was last seen " + when + ".";
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch(trackUrl, { headers: { "Accept": "application/json" } });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Status changed (accepted, delivering, completed...): reload to refresh details and history
+      if (data.status !== initialStatus) { location.reload(); return; }
+
+      const text = document.getElementById("track-text");
+      if (data.rider && text) {
+        text.textContent = describe(data.rider);
+        if (map && data.rider.lat !== null) {
+          const pos = [data.rider.lat, data.rider.lng];
+          if (!marker) marker = L.marker(pos).addTo(map).bindPopup(data.rider.name);
+          else marker.setLatLng(pos);
+          if (!centered) { map.setView(pos, 16); centered = true; }
+        }
+      }
+    } catch (e) { /* network hiccup, try again on the next tick */ }
+  }
+
+  poll();
+  setInterval(poll, 5000);
+</script>
+{% endif %}
+{% endblock %}
